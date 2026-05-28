@@ -1,0 +1,6 @@
+{
+  "name": "KoncoPRD",
+  "description": "Progressive Web App untuk memantau, menulis, dan menguji dokumen PRD berbasis AI",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

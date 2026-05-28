@@ -1,0 +1,284 @@
+@import "https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,600;1,600&display=swap";
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", monospace;
+  --font-display: "Space Grotesk", "Inter", sans-serif;
+  --font-serif: "Playfair Display", serif;
+}
+
+/* Global resets and support */
+body {
+  @apply bg-slate-50 text-slate-800 font-sans antialiased transition-colors duration-200;
+  -webkit-tap-highlight-color: transparent;
+}
+
+body.dark {
+  background-color: #0A0A0B;
+  color: #EDEDED;
+}
+
+/* Custom Webkit scrollbar for sleek workspaces */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.3);
+  border-radius: 9999px;
+  @apply transition-colors duration-200;
+}
+.dark ::-webkit-scrollbar-thumb {
+  background: rgba(124, 58, 237, 0.15);
+}
+.dark ::-webkit-scrollbar-thumb:hover {
+  background: rgba(124, 58, 237, 0.3);
+}
+
+/* Premium radial gradient backgrounds */
+.premium-workspace-bg {
+  background-image: radial-gradient(at 0% 0%, rgba(240, 253, 245, 0.4) 0px, transparent 50%),
+                    radial-gradient(at 50% 0%, rgba(220, 252, 231, 0.45) 0px, transparent 50%),
+                    radial-gradient(at 100% 0%, rgba(187, 247, 208, 0.3) 0px, transparent 50%);
+}
+
+.dark .premium-workspace-bg {
+  background-color: #0A0A0B;
+  background-image: radial-gradient(at 0% 0%, rgba(124, 58, 237, 0.08) 0px, transparent 50%),
+                    radial-gradient(at 50% 0%, rgba(219, 39, 119, 0.04) 0px, transparent 50%),
+                    radial-gradient(at 100% 0%, rgba(124, 58, 237, 0.03) 0px, transparent 50%);
+}
+
+/* Frosted glass cards */
+.glass-panel {
+  @apply backdrop-blur-md bg-white/75 border border-slate-200/50 rounded-xl shadow-sm transition-all duration-200;
+}
+
+.dark .glass-panel {
+  background-color: rgba(13, 13, 14, 0.7);
+  border-color: rgba(255, 255, 255, 0.08);
+  @apply shadow-xl shadow-black/40 backdrop-blur-md;
+}
+
+/* Skeleton loader glow */
+@keyframes skeleton-glow {
+  0%, 100% { opacity: 0.8; }
+  50% { opacity: 0.35; }
+}
+
+.skeleton-item {
+  animation: skeleton-glow 1.5s ease-in-out infinite;
+}
+
+/* Main PRD Prose Visual Styling to match koncoprdai.insforge.site */
+.prd-prose {
+  @apply text-slate-700 leading-relaxed text-sm md:text-base;
+}
+
+.dark .prd-prose {
+  @apply text-slate-300;
+}
+
+.prd-prose h1 {
+  @apply text-xl md:text-2xl font-bold tracking-tight text-slate-900 border-b border-slate-200/80 pb-2 mt-6 mb-4 font-display;
+}
+
+.dark .prd-prose h1 {
+  @apply text-slate-100 border-slate-800;
+}
+
+.prd-prose h2 {
+  @apply text-lg md:text-xl font-bold tracking-tight text-slate-800 mt-5 mb-3 flex items-center gap-2 font-display;
+}
+
+.dark .prd-prose h2 {
+  @apply text-slate-200;
+}
+
+.prd-prose h3 {
+  @apply text-base md:text-lg font-semibold text-slate-800 mt-4 mb-2;
+}
+
+.dark .prd-prose h3 {
+  @apply text-slate-300;
+}
+
+.prd-prose p {
+  @apply mb-4 text-justify;
+}
+
+.prd-prose ul {
+  @apply list-disc pl-5 mb-4 space-y-1.5;
+}
+
+.prd-prose ol {
+  @apply list-decimal pl-5 mb-4 space-y-1.5;
+}
+
+.prd-prose li {
+  @apply text-slate-600;
+}
+
+.dark .prd-prose li {
+  @apply text-slate-400;
+}
+
+.prd-prose strong {
+  @apply font-semibold text-slate-900;
+}
+
+.dark .prd-prose strong {
+  @apply text-slate-100;
+}
+
+/* Beautiful dynamic spec table styles */
+.prd-prose table {
+  @apply w-full border-collapse text-left rounded-lg overflow-hidden my-5 border border-slate-200/80 text-xs md:text-sm shadow-sm;
+}
+
+.dark .prd-prose table {
+  @apply border-slate-800/80 shadow-black/10;
+}
+
+.prd-prose th {
+  @apply bg-slate-50 text-slate-700 font-semibold px-4 py-2.5 border-b border-slate-200/80 uppercase tracking-wider font-mono;
+  font-size: 0.65rem;
+}
+
+.dark .prd-prose th {
+  @apply bg-slate-950/80 text-slate-300 border-slate-800;
+}
+
+.prd-prose td {
+  @apply px-4 py-2 border-b border-slate-100 text-slate-600;
+}
+
+.dark .prd-prose td {
+  @apply border-slate-800/50 text-slate-400;
+}
+
+.prd-prose tr:last-child td {
+  @apply border-none;
+}
+
+.prd-prose tr:nth-child(2n) {
+  @apply bg-slate-50/40;
+}
+
+.dark .prd-prose tr:nth-child(2n) {
+  @apply bg-slate-950/20;
+}
+
+/* Code & pre highlights */
+.prd-prose code {
+  @apply px-1.5 py-0.5 bg-violet-50/50 border border-violet-100/50 rounded text-[#7C3AED] font-mono text-xs font-medium;
+}
+
+.dark .prd-prose code {
+  background-color: rgba(255, 255, 255, 0.05);
+  color: #DB2777;
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+.prd-prose pre {
+  @apply p-4 bg-slate-950 text-slate-200 rounded-lg shadow-inner overflow-x-auto my-4 border border-slate-900 font-mono text-xs md:text-sm leading-normal;
+}
+
+.prd-prose pre code {
+  @apply p-0 bg-transparent border-none text-slate-100 font-normal;
+}
+
+.prd-prose blockquote {
+  @apply pl-4 border-l-4 border-[#7C3AED] bg-slate-50/60 py-2.5 pr-2 my-4 text-slate-500 italic rounded-r;
+}
+
+.dark .prd-prose blockquote {
+  background-color: rgba(13, 13, 14, 0.5);
+  @apply text-slate-400;
+}
+
+.prd-prose hr {
+  @apply my-6 border-slate-200/60;
+}
+
+.dark .prd-prose hr {
+  @apply border-slate-800/60;
+}
+
+.prd-prose a {
+  @apply text-[#7C3AED] underline underline-offset-2 font-medium hover:text-[#DB2777] transition-colors duration-150;
+}
+
+.dark .prd-prose a {
+  @apply text-[#7C3AED] hover:text-[#DB2777];
+}
+
+/* Custom drag resizing */
+.resize-handle-wrapper {
+  @apply cursor-col-resize z-20 shrink-0 flex justify-center items-center h-full relative select-none;
+  width: 8px;
+}
+
+.resize-handle-bar {
+  @apply rounded-full bg-slate-200/40 hover:bg-[#7C3AED] transition-all duration-150;
+  width: 4px;
+  height: 50px;
+}
+
+.dark .resize-handle-bar {
+  @apply bg-slate-800/50 hover:bg-[#7C3AED];
+}
+
+/* Text and dynamic sizes */
+.text-xxs {
+  font-size: 0.65rem;
+}
+
+/* Active buttons and tags */
+.active-glow {
+  @apply ring-2 ring-[#7C3AED]/25 border-[#7C3AED] bg-[#7C3AED]/10;
+}
+
+.dark .active-glow {
+  @apply ring-2 ring-[#7C3AED]/30 border-[#7C3AED] bg-[#7C3AED]/20;
+}
+
+/* Mobile responsive menu slide-over */
+@keyframes slide-in {
+  from { transform: translateX(-100%); }
+  to { transform: translateX(0); }
+}
+
+.mobile-sidebar-enter {
+  animation: slide-in 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Print controls */
+@media print {
+  body {
+    background: #ffffff !important;
+    color: #1e293b !important;
+  }
+  .no-print {
+    display: none !important;
+  }
+  .print-page-break {
+    page-break-before: always !important;
+    break-before: page !important;
+  }
+  .prd-prose {
+    font-size: 11pt !important;
+    line-height: 1.5 !important;
+  }
+  .prd-prose pre {
+    white-space: pre-wrap !important;
+    word-break: break-all !important;
+    border: 1px solid #cbd5e1 !important;
+    background-color: #f8fafc !important;
+    color: #1e293b !important;
+  }
+}
