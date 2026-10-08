@@ -1,0 +1,55 @@
+name: LLM Gateway Hunter
+on:
+  workflow_dispatch:
+    inputs:
+      cidr:
+        description: 'CIDR ranges (comma-separated)'
+        required: true
+        default: '119.23.144.0/24,115.159.0.0/24'
+      ports:
+        description: 'Ports (comma-separated)'
+        required: false
+        default: '3000,3001,8000'
+      workers:
+        description: 'Concurrent workers'
+        required: false
+        default: '50'
+      timeout:
+        description: 'HTTP timeout (seconds)'
+        required: false
+        default: '3'
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      
+      - name: Run llm_hunter
+        run: |
+          python tools/llm_hunter.py \
+            --cidr "${{ github.event.inputs.cidr }}" \
+            --ports "${{ github.event.inputs.ports }}" \
+            --workers ${{ github.event.inputs.workers }} \
+            --timeout ${{ github.event.inputs.timeout }} \
+            --output hunt_results.txt \
+            --label "GITHUB-SWEEP"
+      
+      - name: Upload results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hunt-results
+          path: hunt_results.txt
+          retention-days: 7
+      
+      - name: Show results
+        run: |
+          echo "=== RESULTS ==="
+          cat hunt_results.txt || echo "No results"
