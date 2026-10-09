@@ -1,19 +1,15 @@
-name: LLM Gateway Hunter
+name: LLM Gateway Hunter (masscan)
 on:
   workflow_dispatch:
     inputs:
       cidr:
         description: 'CIDR ranges (comma-separated)'
         required: true
-        default: '119.23.144.0/24,115.159.0.0/24'
+        default: '119.23.0.0/16,115.159.0.0/16'
       ports:
         description: 'Ports (comma-separated)'
         required: false
         default: '3000,3001,8000'
-      workers:
-        description: 'Concurrent workers'
-        required: false
-        default: '50'
       timeout:
         description: 'HTTP timeout (seconds)'
         required: false
@@ -22,34 +18,59 @@ on:
 jobs:
   scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
-      
+
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: '3.11'
-      
-      - name: Run llm_hunter
+
+      - name: Install masscan
         run: |
-          python tools/llm_hunter.py \
-            --cidr "${{ github.event.inputs.cidr }}" \
-            --ports "${{ github.event.inputs.ports }}" \
-            --workers ${{ github.event.inputs.workers }} \
-            --timeout ${{ github.event.inputs.timeout }} \
-            --output hunt_results.txt \
-            --label "GITHUB-SWEEP"
-      
+          sudo apt-get update
+          sudo apt-get install -y masscan
+
+      - name: Run masscan
+        run: |
+          CIDRS="${{ github.event.inputs.cidr }}"
+          PORTS="${{ github.event.inputs.ports }}"
+          echo "Scanning: $CIDRS ports $PORTS"
+          masscan $CIDRS -p$PORTS --rate=10000 --timeout=2000 -oL masscan_results.txt
+          echo "=== masscan results ==="
+          cat masscan_results.txt
+          echo "Open ports: $(grep -c 'open' masscan_results.txt 2>/dev/null || echo 0)"
+
+      - name: Extract IPs with open ports
+        id: extract
+        run: |
+          grep "open" masscan_results.txt 2>/dev/null | awk '{split($1,a,":"); print a[1]":"a[2]}' | sort -u > open_ports.txt
+          echo "=== Open ports ==="
+          cat open_ports.txt
+          echo "Count: $(wc -l < open_ports.txt 2>/dev/null || echo 0)"
+
+      - name: Fingerprint + Validate
+        run: |
+          if [ -s open_ports.txt ]; then
+            python tools/llm_hunter.py --file open_ports.txt --ports ${{ github.event.inputs.ports }} --workers 50 --timeout ${{ github.event.inputs.timeout }} --output hunt_results.txt --label "MASSCAN-SWEEP"
+          else
+            echo "No open ports found"
+            echo "🎯 MASSCAN-SWEEP x0 — $(date '+%d/%m %H:%M-%H:%M')" > hunt_results.txt
+          fi
+
       - name: Upload results
         if: always()
         uses: actions/upload-artifact@v4
         with:
           name: hunt-results
-          path: hunt_results.txt
+          path: |
+            hunt_results.txt
+            masscan_results.txt
+            open_ports.txt
           retention-days: 7
-      
+
       - name: Show results
         run: |
-          echo "=== RESULTS ==="
-          cat hunt_results.txt || echo "No results"
+          echo "=== FINAL RESULTS ==="
+          cat hunt_results.txt 2>/dev/null || echo "No results"
