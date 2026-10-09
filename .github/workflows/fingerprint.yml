@@ -1,0 +1,60 @@
+name: Fingerprint Open Ports (sharded)
+on:
+  workflow_dispatch:
+    inputs:
+      shard:
+        description: 'Shard index (0-based)'
+        required: true
+        default: '0'
+      shards:
+        description: 'Total shards'
+        required: true
+        default: '12'
+      workers:
+        description: 'Concurrent probes'
+        required: false
+        default: '300'
+      timeout:
+        description: 'HTTP timeout (s)'
+        required: false
+        default: '3'
+
+jobs:
+  fp:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Unpack + shard
+        run: |
+          gunzip -c data/all_open.txt.gz > all_open.txt
+          TOTAL=$(wc -l < all_open.txt)
+          echo "total targets: $TOTAL"
+          S=${{ github.event.inputs.shard }}
+          N=${{ github.event.inputs.shards }}
+          awk -v s="$S" -v n="$N" 'NR % n == s' all_open.txt > shard.txt
+          echo "shard $S/$N -> $(wc -l < shard.txt) targets"
+
+      - name: Probe
+        run: |
+          python tools/fingerprint_only.py \
+            --file shard.txt \
+            --workers ${{ github.event.inputs.workers }} \
+            --timeout ${{ github.event.inputs.timeout }} \
+            --output hits_${{ github.event.inputs.shard }}.txt 2>&1 | tail -60
+          echo "=== hits ==="
+          cat hits_${{ github.event.inputs.shard }}.txt 2>/dev/null | head -100
+
+      - name: Upload
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hits-${{ github.event.inputs.shard }}
+          path: hits_${{ github.event.inputs.shard }}.txt
+          retention-days: 14
