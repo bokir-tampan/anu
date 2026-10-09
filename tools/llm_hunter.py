@@ -243,6 +243,23 @@ def main():
     if not ips:
         ap.error("Provide --cidr or --file")
 
+    # Support ip:port lines (masscan -oL output) — use those ports too
+    extra_ports = set()
+    clean_ips = []
+    for entry in ips:
+        e = entry.strip()
+        if ":" in e and e.count(":") == 1:
+            host, _, port_s = e.partition(":")
+            if host.count(".") == 3 and port_s.isdigit():
+                clean_ips.append(host)
+                extra_ports.add(int(port_s))
+                continue
+        clean_ips.append(e)
+    ips = clean_ips
+    if extra_ports:
+        ports = sorted(set(ports) | extra_ports)
+        print(f"[*] detected ip:port entries, ports -> {ports}", file=sys.stderr)
+
     print(f"[*] Scanning {len(ips)} IPs on ports {ports}", file=sys.stderr)
     print(f"[*] Workers: {a.workers}, timeout: {TIMEOUT}s", file=sys.stderr)
 
