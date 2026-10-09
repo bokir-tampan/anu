@@ -10,6 +10,10 @@ on:
         description: 'Ports (comma-separated)'
         required: false
         default: '3000,3001,8000'
+      rate:
+        description: 'masscan packets/sec'
+        required: false
+        default: '25000'
       timeout:
         description: 'HTTP timeout (seconds)'
         required: false
@@ -18,7 +22,7 @@ on:
 jobs:
   scan:
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
 
@@ -36,10 +40,11 @@ jobs:
         run: |
           CIDRS="${{ github.event.inputs.cidr }}"
           PORTS="${{ github.event.inputs.ports }}"
-          echo "Scanning: $CIDRS ports $PORTS"
-          sudo masscan $CIDRS -p$PORTS --rate=10000 -oL masscan_results.txt
+          RATE="${{ github.event.inputs.rate }}"
+          echo "Scanning: $CIDRS ports $PORTS rate $RATE"
+          sudo masscan $CIDRS -p$PORTS --rate=$RATE --wait=3 -oL masscan_results.txt || true
           echo "=== masscan results ==="
-          cat masscan_results.txt
+          cat masscan_results.txt 2>/dev/null || echo "(empty)"
           echo "Open ports: $(grep -c 'open' masscan_results.txt 2>/dev/null || echo 0)"
 
       - name: Extract IPs with open ports
@@ -56,7 +61,7 @@ jobs:
             python tools/llm_hunter.py --file open_ports.txt --ports ${{ github.event.inputs.ports }} --workers 50 --timeout ${{ github.event.inputs.timeout }} --output hunt_results.txt --label "MASSCAN-SWEEP"
           else
             echo "No open ports found"
-            echo "🎯 MASSCAN-SWEEP x0 — $(date '+%d/%m %H:%M-%H:%M')" > hunt_results.txt
+            printf '🎯 MASSCAN-SWEEP x0 — %s\n' "$(date '+%d/%m %H:%M')" > hunt_results.txt
           fi
 
       - name: Upload results
