@@ -1,0 +1,77 @@
+name: Video Gateway Hunter
+on:
+  workflow_dispatch:
+    inputs:
+      targets:
+        description: 'IP atau IP:PORT, dipisah baris baru'
+        required: false
+        default: ''
+      cidr:
+        description: 'CIDR opsional (kalau mau scan segar, mis. 8.222.254.0/24)'
+        required: false
+        default: ''
+      ports:
+        description: 'Port kalau pakai cidr'
+        required: false
+        default: '8000,3000,3001'
+      workers:
+        required: false
+        default: '100'
+      gen_timeout:
+        description: 'timeout generate per model (detik)'
+        required: false
+        default: '150'
+
+jobs:
+  hunt:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Siapkan daftar target
+        run: |
+          cat > targets.txt <<'EOF'
+          ${{ github.event.inputs.targets }}
+          EOF
+          if [ -n "${{ github.event.inputs.cidr }}" ]; then
+            python - <<'PY' >> targets.txt
+          import ipaddress, os
+          cidrs = os.environ["C"].split(",")
+          ports = os.environ["P"].split(",")
+          for c in cidrs:
+              for ip in ipaddress.ip_network(c.strip(), strict=False).hosts():
+                  for p in ports:
+                      print("%s:%s" % (ip, p.strip()))
+          PY
+          fi
+          sed -i '/^\s*$/d' targets.txt
+          echo "target: $(wc -l < targets.txt)"
+          head -20 targets.txt
+        env:
+          C: ${{ github.event.inputs.cidr }}
+          P: ${{ github.event.inputs.ports }}
+
+      - name: Uji generate video
+        run: |
+          python tools/video_hunt.py \
+            --file targets.txt \
+            --workers ${{ github.event.inputs.workers }} \
+            --gen-timeout ${{ github.event.inputs.gen_timeout }} \
+            --output video_results.jsonl 2>&1 | tail -80
+
+      - name: Tampilkan hasil
+        if: always()
+        run: cat video_summary.txt 2>/dev/null || echo "(tidak ada hasil)"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: video-results
+          path: |
+            video_results.jsonl
+            video_summary.txt
+          retention-days: 14
