@@ -37,7 +37,7 @@ jobs:
           CIDRS="${{ github.event.inputs.cidr }}"
           PORTS="${{ github.event.inputs.ports }}"
           echo "Scanning: $CIDRS ports $PORTS"
-          masscan $CIDRS -p$PORTS --rate=10000 --timeout=2000 -oL masscan_results.txt
+          masscan $CIDRS -p$PORTS --rate=10000 -oL masscan_results.txt
           echo "=== masscan results ==="
           cat masscan_results.txt
           echo "Open ports: $(grep -c 'open' masscan_results.txt 2>/dev/null || echo 0)"
