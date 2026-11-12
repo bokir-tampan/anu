@@ -19,6 +19,7 @@ import argparse
 import json
 import random
 import re
+import socket
 import string
 import time
 import urllib.error
@@ -65,6 +66,15 @@ def http(url, payload=None, key=None, timeout=25, headers=None):
 
 def base_of(ip, port):
     return "http://%s:%s" % (ip, port)
+
+
+def tcp_open(ip, port, timeout=3):
+    """Filter cepat: host mati jangan dibuahi 3x HTTP timeout."""
+    try:
+        with socket.create_connection((ip, int(port)), timeout=timeout):
+            return True
+    except Exception:
+        return False
 
 
 # ---------------------------------------------------------------- discovery
@@ -250,6 +260,10 @@ def probe_line(line, prompt, farm, key, timeout):
         ip, port = line, "8000"
     rec = {"ip": ip, "port": port}
     t0 = time.time()
+
+    if not tcp_open(ip, port, timeout=3):
+        rec["verdict"] = "closed"
+        return rec
 
     models, mstatus = models_for(ip, port)
     rec["n_models"] = len(models)
