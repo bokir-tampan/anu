@@ -17,10 +17,12 @@ Pemakaian:
 """
 import argparse
 import json
+import os
 import random
 import re
 import socket
 import string
+import threading
 import time
 import urllib.error
 import urllib.request
@@ -147,15 +149,30 @@ ERRORISH = re.compile(
     r"(invalid request|bad credential|unauthenticated|unauthorized|please update your client|"
     r"model is not found|not found|api key|no permission|forbidden|rate limit|"
     r"upstream request failed|model is unavailable|余额不足|额度不足|无效的令牌|令牌已过期|"
-    r"insufficient|quota exceeded|exceeded your current quota|invalid_api_key)", re.I)
+    r"insufficient|quota exceeded|exceeded your current quota|invalid_api_key|"
+    r"belongs to a disabled organization|unset the environment variable|"
+    r"requested entity was not found|reset after|please check your|"
+    r"your (api )?key (is|has)|expired|revoked|"
+    r"エラー|错误|失敗|failed to|no available|service unavailable)", re.I)
+
+# Untuk "open relay" klaim penting: jawaban harus kelihatan seperti prosa model,
+# bukan pesan operasional pendek.
+OPSISH = re.compile(
+    r"(your .{0,40}(key|token|account|subscription|organization|plan|credit)|"
+    r"\bplease\b.*\b(update|check|verify|contact|try)\b|"
+    r"\b(api|bearer|authorization)\s*key\b|"
+    r"https?://\S*(docs|billing|console|dashboard|pricing))", re.I)
 
 
 def _clean(txt):
     """True kalau teks ini jawaban model, False kalau cuma pesan error yang dibungkus."""
     t = (txt or "").strip()
-    if not t or len(t) < 2:
+    if len(t) < 2:
         return False
-    if ERRORISH.search(t):
+    if ERRORISH.search(t) or OPSISH.search(t):
+        return False
+    # pesan error sering JSON/HTML mentah
+    if t.startswith(("{", "[", "<")):
         return False
     return True
 
@@ -316,6 +333,35 @@ def register_probe(ip, port):
 
 
 # ---------------------------------------------------------------- per host
+def probe_line_dl(line, prompt, farm, key, timeout, hard=None):
+    """probe_line dalam thread + deadline keras.
+
+    Gateway open-relay sering mengirim SSE keepalive yang tidak pernah tutup, jadi
+    urllib bisa menggantung selamanya (socket timeout reset tiap byte). Tanpa deadline
+    satu target saja bisa menahan seluruh run dan jsonl tidak pernah ditulis.
+    """
+    hard = hard or int(os.environ.get("HUNT_HARD", "100"))
+    box = {}
+
+    def run():
+        try:
+            box["r"] = probe_line(line, prompt, farm, key, timeout)
+        except Exception as e:
+            ip = line.split(":")[0].strip()
+            port = line.split(":")[1].split()[0] if ":" in line else "8000"
+            box["r"] = {"ip": ip, "port": port, "verdict": "dead",
+                        "note": "exc:%s" % type(e).__name__}
+
+    t = threading.Thread(target=run, daemon=True)
+    t.start()
+    t.join(hard)
+    if "r" not in box:
+        ip = line.split(":")[0].strip()
+        port = line.split(":")[1].split()[0] if ":" in line else "8000"
+        return {"ip": ip, "port": port, "verdict": "timeout", "n_models": 0}
+    return box["r"]
+
+
 def probe_line(line, prompt, farm, key, timeout):
     line = line.strip()
     if not line or line.startswith("#"):
@@ -444,17 +490,17 @@ def main():
     print("[*] %d target, %d workers, farm=%s" % (len(lines), a.workers, a.farm))
     t0 = time.time()
     hits = []
+    fh = open(a.output, "w")
     with cf.ThreadPoolExecutor(a.workers) as ex:
-        for r in ex.map(lambda l: probe_line(l, a.prompt, a.farm, a.key, a.timeout), lines):
+        for r in ex.map(lambda l: probe_line_dl(l, a.prompt, a.farm, a.key, a.timeout), lines):
             if r:
                 hits.append(r)
+                fh.write(json.dumps(r, ensure_ascii=False) + "\n")
+                fh.flush()
                 print("[%-16s] %s:%s models=%d %s" % (
                     r.get("verdict"), r["ip"], r["port"], r.get("n_models", 0),
-                    (r.get("working_model") or r.get("note") or r.get("title") or "")[:70]))
-
-    with open(a.output, "w") as fh:
-        for r in hits:
-            fh.write(json.dumps(r, ensure_ascii=False) + "\n")
+                    (r.get("working_model") or r.get("note") or r.get("title") or "")[:70]), flush=True)
+    fh.close()
 
     order = ["open_relay", "farm_bonus", "oauth_free", "farmable_noverify",
              "farmable_gated", "farmable_zero", "needs_credit", "needs_key", "showcase",
