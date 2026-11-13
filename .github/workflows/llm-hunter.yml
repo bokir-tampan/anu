@@ -14,18 +14,21 @@ on:
         description: 'Port kalau pakai cidr'
         default: '3000,3001,8000,8080,20128'
       workers:
-        default: '60'
+        default: '250'
       timeout:
         description: 'timeout chat per model (detik)'
-        default: '45'
+        default: '20'
       farm:
-        description: 'true = bikin akun di new-api & cek bonus registrasi'
+        description: 'true = bikin akun di new-api & cek bonus/checkin'
         default: 'false'
+      portscan:
+        description: 'true = scan port dulu (wajib untuk /16, hemat HTTP)'
+        default: 'true'
 
 jobs:
   hunt:
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 175
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -38,8 +41,24 @@ jobs:
           if [ -n "${{ github.event.inputs.targets }}" ]; then
             printf '%s\n' "${{ github.event.inputs.targets }}" >> targets.txt
           fi
-          if [ -n "${{ github.event.inputs.cidr }}" ]; then
-            python - <<'PY' >> targets.txt
+          sed -i '/^\s*$/d' targets.txt
+          echo "manual targets: $(wc -l < targets.txt)"
+
+      - name: Portscan CIDR (tahap 1)
+        if: ${{ github.event.inputs.cidr != '' && github.event.inputs.portscan == 'true' }}
+        run: |
+          python tools/portscan.py \
+            --cidr "${{ github.event.inputs.cidr }}" \
+            --ports "${{ github.event.inputs.ports }}" \
+            --concurrency 1500 --timeout 2.0 >> targets.txt 2> portscan.log || true
+          tail -3 portscan.log
+          sed -i '/^\s*$/d' targets.txt
+          echo "setelah portscan: $(wc -l < targets.txt)"
+
+      - name: Expand CIDR tanpa portscan
+        if: ${{ github.event.inputs.cidr != '' && github.event.inputs.portscan != 'true' }}
+        run: |
+          python - >> targets.txt <<'PY'
           import ipaddress, os
           for c in os.environ["C"].split(","):
               c = c.strip()
@@ -49,10 +68,6 @@ jobs:
                   for p in os.environ["P"].split(","):
                       print("%s:%s" % (ip, p.strip()))
           PY
-          fi
-          sed -i '/^\s*$/d' targets.txt
-          echo "target: $(wc -l < targets.txt)"
-          head -20 targets.txt
         env:
           C: ${{ github.event.inputs.cidr }}
           P: ${{ github.event.inputs.ports }}
@@ -65,7 +80,7 @@ jobs:
             --file targets.txt \
             --workers ${{ github.event.inputs.workers }} \
             --timeout ${{ github.event.inputs.timeout }} \
-            --output llm_results.jsonl $FARM 2>&1 | tail -120
+            --output llm_results.jsonl $FARM 2>&1 | tail -150
 
       - name: Tampilkan ringkasan
         if: always()
@@ -78,4 +93,5 @@ jobs:
           path: |
             llm_results.jsonl
             llm_summary.txt
+            portscan.log
           retention-days: 14
