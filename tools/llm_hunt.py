@@ -143,17 +143,34 @@ def status_probe(ip, port):
 
 
 # ---------------------------------------------------------------- live tests
+ERRORISH = re.compile(
+    r"(invalid request|bad credential|unauthenticated|unauthorized|please update your client|"
+    r"model is not found|not found|api key|no permission|forbidden|rate limit|"
+    r"upstream request failed|model is unavailable|余额不足|额度不足|无效的令牌|令牌已过期|"
+    r"insufficient|quota exceeded|exceeded your current quota|invalid_api_key)", re.I)
+
+
+def _clean(txt):
+    """True kalau teks ini jawaban model, False kalau cuma pesan error yang dibungkus."""
+    t = (txt or "").strip()
+    if not t or len(t) < 2:
+        return False
+    if ERRORISH.search(t):
+        return False
+    return True
+
+
 def chat_test(ip, port, model, prompt, key=None, timeout=45):
     body = ""
     for stream in (False, True):
         st, body = http(base_of(ip, port) + "/v1/chat/completions",
-                        {"model": model, "max_tokens": 24, "stream": stream,
+                        {"model": model, "max_tokens": 64, "stream": stream,
                          "messages": [{"role": "user", "content": prompt}]},
                         key=key, timeout=timeout)
         if st != 200:
             return False, "HTTP %s %s" % (st, body[:90].replace("\n", " "))
         if body.lstrip().startswith("data:"):
-            # SSE: ambil potongan content
+            # SSE: gabung delta, tapi buang kalau isinya pesan error
             txt = ""
             for line in body.splitlines():
                 if not line.startswith("data:"):
@@ -167,8 +184,10 @@ def chat_test(ip, port, model, prompt, key=None, timeout=45):
                     continue
                 d = (j.get("choices") or [{}])[0].get("delta") or {}
                 txt += d.get("content") or d.get("reasoning_content") or ""
-            if txt.strip():
+            if _clean(txt):
                 return True, txt.strip()[:100]
+            if txt.strip():
+                return False, "SSE error text: " + txt.strip()[:80]
             continue
         try:
             j = json.loads(body)
@@ -177,12 +196,13 @@ def chat_test(ip, port, model, prompt, key=None, timeout=45):
         ch = (j.get("choices") or [{}])[0]
         msg = ch.get("message") or {}
         txt = (msg.get("content") or msg.get("reasoning_content") or "").strip()
-        if txt:
+        if _clean(txt):
             return True, txt[:100]
+        if txt:
+            return False, "content is error text: " + txt[:80]
         err = j.get("error")
         if err:
             return False, str(err)[:110]
-        # finish_reason tapi kosong -> coba stream sekali
         if stream:
             return False, "empty choices"
     return False, "empty choices"
