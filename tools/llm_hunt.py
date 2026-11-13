@@ -193,56 +193,103 @@ def rand_user():
 
 
 def register_probe(ip, port):
-    """New API: daftar akun, login, ambil quota. Hanya jika register_enabled."""
+    """New API: daftar akun, login, ambil quota, coba check-in harian.
+
+    Dua varian auth yang harus didukung:
+      - new-api baru  : login balas data.access_token (JWT) + header New-Api-User
+      - new-api lama  : login hanya Set-Cookie session=... (TANPA access_token)
+    Karena itu pakai cookie jar, bukan header manual saja.
+    """
+    import http.cookiejar
+
     b = base_of(ip, port)
+    jar = http.cookiejar.CookieJar()
+    op = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(jar))
+    state = {}
+
+    def call(path, payload=None, timeout=25):
+        h = dict(UA)
+        data = None
+        if payload is not None:
+            data = json.dumps(payload).encode()
+            h["Content-Type"] = "application/json"
+        if state.get("tok"):
+            h["Authorization"] = "Bearer " + state["tok"]
+        if state.get("uid"):
+            h["New-Api-User"] = str(state["uid"])
+        h["Origin"] = b
+        h["Referer"] = b + "/register"
+        r = urllib.request.Request(b + path, data=data, headers=h,
+                                   method="POST" if data else "GET")
+        try:
+            with op.open(r, timeout=timeout) as y:
+                return y.status, y.read(200000).decode(errors="ignore")
+        except urllib.error.HTTPError as e:
+            try:
+                return e.code, e.read(40000).decode(errors="ignore")
+            except Exception:
+                return e.code, ""
+        except Exception as e:
+            return 0, str(e)[:90]
+
     u = rand_user()
     pw = "Zk" + "".join(random.choices(string.ascii_letters + string.digits, k=10))
-    hdrs = {"Origin": b, "Referer": b + "/register", "Content-Type": "application/json"}
 
-    st, body = http(b + "/api/user/register",
-                    {"username": u, "password": pw, "password2": pw}, headers=hdrs)
+    st, body = call("/api/user/register",
+                    {"username": u, "password": pw, "password2": pw})
     if not (st == 200 and '"success":true' in body.replace(" ", "")):
         return {"registered": False, "register_resp": body[:150]}
 
-    st, body = http(b + "/api/user/login", {"username": u, "password": pw}, headers=hdrs)
+    rec = {"registered": True, "username": u, "password": pw}
+    st, body = call("/api/user/login", {"username": u, "password": pw})
     try:
-        j = json.loads(body)
+        d = json.loads(body).get("data") or {}
+        state["tok"] = d.get("access_token")
+        state["uid"] = d.get("id")
+        rec.update({"user_id": d.get("id"), "role": d.get("role"),
+                    "group": d.get("group"), "auth": "jwt" if state["tok"] else "cookie"})
     except Exception:
-        return {"registered": True, "username": u, "password": pw, "login": "parse fail"}
-    d = j.get("data") or {}
-    tok = d.get("access_token")
-    uid = d.get("id") or (d.get("user") or {}).get("id")
-    rec = {"registered": True, "username": u, "password": pw, "user_id": uid,
-           "access_token": tok}
+        rec["login"] = body[:120]
 
-    quota = used = group = None
-    if tok:
-        h2 = {"New-Api-User": str(uid or "")}
-        st, body = http(b + "/api/user/self", key=tok, headers=h2)
-        try:
-            sd = json.loads(body).get("data") or {}
-            quota, used, group = sd.get("quota"), sd.get("used_quota"), sd.get("group")
-            rec["display_name"] = sd.get("display_name")
-        except Exception:
-            rec["self_raw"] = body[:150]
-    rec.update({"quota": quota, "used_quota": used, "group": group})
+    st, body = call("/api/user/self")
+    try:
+        sd = json.loads(body).get("data") or {}
+        rec["quota"] = sd.get("quota")
+        rec["used_quota"] = sd.get("used_quota")
+        rec["display_name"] = sd.get("display_name")
+    except Exception:
+        rec["self_raw"] = body[:150]
 
-    # coba bikin key + reveal
-    if tok:
-        h2 = {"New-Api-User": str(uid or "")}
-        st, body = http(b + "/api/token/", {"name": "hunt", "remain_quota": 0,
-                                            "unlimited_quota": True, "expired_time": -1},
-                        key=tok, headers=h2)
-        rec["create_key"] = body[:120]
-        st, body = http(b + "/api/token/?p=1&size=5", key=tok, headers=h2)
+    # check-in harian: banyak situs kasih quota di sini, bukan di register
+    for p in ("/api/user/checkin", "/api/user/daily_checkin"):
+        st, body = call(p, {})
+        if st == 200 and '"success":true' in body.replace(" ", ""):
+            try:
+                rec["checkin"] = json.loads(body)
+            except Exception:
+                rec["checkin_raw"] = body[:120]
+            st2, body2 = call("/api/user/self")
+            try:
+                rec["quota_after_checkin"] = json.loads(body2)["data"].get("quota")
+            except Exception:
+                pass
+            break
+
+    # key: hanya berguna kalau ada saldo
+    if (rec.get("quota_after_checkin") or rec.get("quota") or 0) > 0:
+        call("/api/token/", {"name": "hunt", "remain_quota": 0,
+                             "unlimited_quota": True, "expired_time": -1})
+        st, body = call("/api/token/?p=1&size=5")
         try:
             it = (json.loads(body).get("data") or {}).get("items") or []
             if it:
-                tid = it[0]["id"]
-                st, body = http("%s/api/token/%s/key" % (b, tid), key=tok, headers=h2)
-                if st == 200 and "sk-" in body:
-                    rec["api_key"] = re.search(r"(sk-[A-Za-z0-9_\-]{10,})", body).group(1)
                 rec["token_ids"] = [x.get("id") for x in it[:3]]
+                for tid in rec["token_ids"]:
+                    st2, b2 = call("/api/token/%s/key" % tid)
+                    m = re.search(r"(sk-[A-Za-z0-9_\-]{10,})", b2)
+                    if m:
+                        rec["api_key"] = m.group(1)
+                        break
         except Exception:
             pass
     return rec
@@ -341,7 +388,8 @@ def probe_line(line, prompt, farm, key, timeout):
     if farm and info.get("register_enabled"):
         reg = register_probe(ip, port)
         rec["register"] = reg
-        if reg.get("registered") and (reg.get("quota") or 0) > 0:
+        eff = reg.get("quota_after_checkin") or reg.get("quota") or 0
+        if reg.get("registered") and eff > 0:
             rec["verdict"] = "farm_bonus"
         elif reg.get("registered"):
             rec["verdict"] = "farmable_zero"
